@@ -41,6 +41,33 @@ const readList = (key: string, workouts: Workout[]): string[] => {
   }
 };
 
+// Reuse the last API response when the service is temporarily unavailable.
+function readWorkoutCache(): Workout[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem("fitlog-workouts") || "[]");
+    if (!Array.isArray(saved)) return [];
+
+    return saved.filter(
+      (item): item is Workout =>
+        item &&
+        typeof item.id === "string" &&
+        typeof item.name === "string" &&
+        Array.isArray(item.tags),
+    );
+  } catch {
+    return [];
+  }
+}
+
+// Keep the current page usable even if browser storage cannot be written.
+function saveWorkoutCache(workouts: Workout[]) {
+  try {
+    localStorage.setItem("fitlog-workouts", JSON.stringify(workouts));
+  } catch {
+    // The API response is still used for this visit.
+  }
+}
+
 // Shared navigation with live plan and saved counters.
 function Header({
   view,
@@ -503,11 +530,13 @@ export default function FitLogApp({
   view,
   workouts: initialWorkouts,
   workout,
+  workoutId,
   detailError,
 }: {
   view: View;
   workouts: Workout[];
   workout?: Workout;
+  workoutId?: string;
   detailError?: string;
 }) {
   const [workouts, setWorkouts] = useState(initialWorkouts);
@@ -522,7 +551,16 @@ export default function FitLogApp({
 
   // Load workout data for the library and plan pages.
   useEffect(() => {
-    if (view === "detail" || workouts.length > 0) return;
+    if (view === "detail") {
+      if (!workout && workouts.length === 0) {
+        const restore = window.setTimeout(() => {
+          setWorkouts(readWorkoutCache());
+        }, 0);
+        return () => window.clearTimeout(restore);
+      }
+      return;
+    }
+    if (workouts.length > 0) return;
 
     let active = true;
     getWorkouts()
@@ -533,16 +571,23 @@ export default function FitLogApp({
           setWorkoutsError("The workout API returned an empty list.");
           return;
         }
+        saveWorkoutCache(data);
         setWorkouts(data);
       })
       .catch(() => {
-        if (active) setWorkoutsError("Please refresh to try loading again.");
+        if (!active) return;
+        const savedWorkouts = readWorkoutCache();
+        if (savedWorkouts.length > 0) {
+          setWorkouts(savedWorkouts);
+        } else {
+          setWorkoutsError("Please refresh to try loading again.");
+        }
       });
 
     return () => {
       active = false;
     };
-  }, [view, workouts.length]);
+  }, [view, workout, workouts.length]);
 
   // Restore the saved plan after the browser has loaded.
   useEffect(() => {
@@ -570,7 +615,8 @@ export default function FitLogApp({
     setToast(message);
     setTimeout(() => setToast(""), 2400);
   };
-  const item = workout;
+  const item =
+    workout || workouts.find((savedWorkout) => savedWorkout.id === workoutId);
 
   // Add a workout only once and enforce the five-exercise daily limit.
   const add = () => {
@@ -634,7 +680,7 @@ export default function FitLogApp({
           onSave={save}
         />
       )}
-      {view === "detail" && detailError && (
+      {view === "detail" && detailError && !item && (
         <main className="shell page">
           <div className="empty">
             <h1 className="display">WORKOUT UNAVAILABLE</h1>

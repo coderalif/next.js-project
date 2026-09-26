@@ -17,6 +17,7 @@ export default async function WorkoutPage({
       <FitLogApp
         view="detail"
         workouts={[]}
+        workoutId={id}
         detailError="Workout details are temporarily unavailable. Please try again shortly."
       />
     );
