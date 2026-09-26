@@ -38,4 +38,4 @@ npx tsc --noEmit
 npm run build
 ```
 
-Workout data and images are loaded from the FitLog API, so the deployed app needs access to `https://api.abcz.workers.dev/api/fitlog`.
+Workout data and images are loaded from the FitLog API, so the deployed app needs access to `https://api.api-store.workers.dev/api/fitlog`.

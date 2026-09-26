@@ -145,12 +145,12 @@ function Stats({ item }: { item: Workout }) {
   );
 }
 
-function WorkoutLoading() {
+function WorkoutLoading({ label = "LOADING WORKOUTS..." }: { label?: string }) {
   return (
     <div className="loading" role="status" aria-live="polite">
       <div>
         <div className="spinner" />
-        <p>LOADING WORKOUTS...</p>
+        <p>{label}</p>
       </div>
     </div>
   );
@@ -431,9 +431,9 @@ function Plan({
                 <Stats item={item} />
               </div>
               <div className="plan-actions">
-                <a className="outline-btn" href={`/workout/${item.id}`}>
+                <Link className="outline-btn" href={`/workout/${item.id}`}>
                   View details
-                </a>
+                </Link>
                 {tab === "plan" && (
                   <button className="lime-btn" onClick={() => onDone(item.id)}>
                     ✓ Mark as done
@@ -459,11 +459,13 @@ function Plan({
 function Detail({
   item,
   disableAdd,
+  disableSave,
   onAdd,
   onSave,
 }: {
   item: Workout;
   disableAdd: boolean;
+  disableSave: boolean;
   onAdd: () => void;
   onSave: () => void;
 }) {
@@ -516,7 +518,7 @@ function Detail({
             >
               ▣ &nbsp; Add to today&apos;s plan
             </button>
-            <button className="outline-btn" onClick={onSave}>
+            <button className="outline-btn" onClick={onSave} disabled={disableSave}>
               ♡ &nbsp; Save for later
             </button>
           </div>
@@ -548,15 +550,29 @@ export default function FitLogApp({
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [toast, setToast] = useState("");
+  // Show short-lived feedback after plan actions.
+  const notify = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(""), 2400);
+  };
 
   // Load workout data for the library and plan pages.
   useEffect(() => {
     if (view === "detail") {
       if (!workout && workouts.length === 0) {
-        const restore = window.setTimeout(() => {
-          setWorkouts(readWorkoutCache());
-        }, 0);
-        return () => window.clearTimeout(restore);
+        let active = true;
+        getWorkouts()
+          .then((data) => {
+            if (!active) return;
+            if (data.length > 0) saveWorkoutCache(data);
+            setWorkouts(data);
+          })
+          .catch(() => {
+            if (active) setWorkouts(readWorkoutCache());
+          });
+        return () => {
+          active = false;
+        };
       }
       return;
     }
@@ -589,32 +605,44 @@ export default function FitLogApp({
     };
   }, [view, workout, workouts.length]);
 
-  // Restore the saved plan after the browser has loaded.
+  // Restore IDs after the catalog loads, or preserve IDs on a direct detail visit.
   useEffect(() => {
+    if (workouts.length === 0 && !(view === "detail" && workout)) return;
     const restore = window.setTimeout(() => {
-      setPlanIds(readList("fitlog-plan", workouts));
-      setSavedIds(readList("fitlog-saved", workouts));
+      const catalog = workouts.length > 0 ? workouts : [];
+      setPlanIds(readList("fitlog-plan", catalog));
+      setSavedIds(readList("fitlog-saved", catalog));
       setHydrated(true);
     }, 0);
     return () => window.clearTimeout(restore);
-  }, [workouts]);
+  }, [workouts, view, workout]);
 
   // Save plan changes in the browser so they survive a reload.
   useEffect(() => {
-    if (hydrated) localStorage.setItem("fitlog-plan", JSON.stringify(planIds));
+    if (!hydrated) return;
+    try {
+      localStorage.setItem("fitlog-plan", JSON.stringify(planIds));
+    } catch {
+      window.setTimeout(
+        () => notify("Browser storage is unavailable; changes may not persist"),
+        0,
+      );
+    }
   }, [hydrated, planIds]);
 
   // Save the later list in the browser too.
   useEffect(() => {
-    if (hydrated)
+    if (!hydrated) return;
+    try {
       localStorage.setItem("fitlog-saved", JSON.stringify(savedIds));
+    } catch {
+      window.setTimeout(
+        () => notify("Browser storage is unavailable; changes may not persist"),
+        0,
+      );
+    }
   }, [hydrated, savedIds]);
 
-  // Show short-lived feedback after plan actions.
-  const notify = (message: string) => {
-    setToast(message);
-    setTimeout(() => setToast(""), 2400);
-  };
   const item =
     workout || workouts.find((savedWorkout) => savedWorkout.id === workoutId);
 
@@ -675,10 +703,16 @@ export default function FitLogApp({
       {view === "detail" && item && (
         <Detail
           item={item}
-          disableAdd={planIds.length >= 5 || planIds.includes(item.id)}
+          disableAdd={!hydrated || planIds.length >= 5 || planIds.includes(item.id)}
+          disableSave={!hydrated}
           onAdd={add}
           onSave={save}
         />
+      )}
+      {view === "detail" && !item && !detailError && (
+        <main className="shell page">
+          <WorkoutLoading label="LOADING WORKOUT DETAILS..." />
+        </main>
       )}
       {view === "detail" && detailError && !item && (
         <main className="shell page">

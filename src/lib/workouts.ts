@@ -31,7 +31,7 @@ type ApiWorkout = {
   instructions: string[];
 };
 
-const API_URL = "https://api.abcz.workers.dev/api/fitlog";
+const API_URL = "https://api.api-store.workers.dev/api/fitlog";
 const API_CACHE = { cache: "force-cache" as RequestCache };
 
 // Convert one API workout into the names used by the app.
