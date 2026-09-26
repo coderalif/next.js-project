@@ -9,7 +9,19 @@ export default async function WorkoutPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const workout = await getWorkout(id);
+  let workout;
+  try {
+    workout = await getWorkout(id);
+  } catch {
+    return (
+      <FitLogApp
+        view="detail"
+        workouts={[]}
+        detailError="Workout details are temporarily unavailable. Please try again shortly."
+      />
+    );
+  }
+
   if (!workout) notFound();
 
   return <FitLogApp view="detail" workout={workout} workouts={[]} />;

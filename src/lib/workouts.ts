@@ -32,6 +32,7 @@ type ApiWorkout = {
 };
 
 const API_URL = "https://api.abcz.workers.dev/api/fitlog";
+const API_CACHE = { cache: "force-cache" as RequestCache };
 
 // Convert one API workout into the names used by the app.
 function normalizeWorkout(data: ApiWorkout): Workout {
@@ -54,7 +55,7 @@ function normalizeWorkout(data: ApiWorkout): Workout {
 
 // Get every workout for the library and My Plan page.
 export async function getWorkouts(): Promise<Workout[]> {
-  const response = await fetch(API_URL, { cache: "no-store" });
+  const response = await fetch(API_URL, API_CACHE);
   if (!response.ok) throw new Error(`Workout API returned ${response.status}`);
 
   const data = (await response.json()) as ApiWorkout[];
@@ -63,7 +64,7 @@ export async function getWorkouts(): Promise<Workout[]> {
 
 // Get one workout for its detail page. A missing ID returns null for the 404 page.
 export async function getWorkout(id: string): Promise<Workout | null> {
-  const response = await fetch(`${API_URL}/${id}`, { cache: "no-store" });
+  const response = await fetch(`${API_URL}/${id}`, API_CACHE);
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Workout API returned ${response.status}`);
 

@@ -503,10 +503,12 @@ export default function FitLogApp({
   view,
   workouts: initialWorkouts,
   workout,
+  detailError,
 }: {
   view: View;
   workouts: Workout[];
   workout?: Workout;
+  detailError?: string;
 }) {
   const [workouts, setWorkouts] = useState(initialWorkouts);
   const [workoutsError, setWorkoutsError] = useState("");
@@ -631,6 +633,17 @@ export default function FitLogApp({
           onAdd={add}
           onSave={save}
         />
+      )}
+      {view === "detail" && detailError && (
+        <main className="shell page">
+          <div className="empty">
+            <h1 className="display">WORKOUT UNAVAILABLE</h1>
+            <p>{detailError}</p>
+            <Link className="lime-btn" href="/">
+              Go to workouts
+            </Link>
+          </div>
+        </main>
       )}
       <Footer />
       {toast && <div className="toast">{toast}</div>}{" "}
