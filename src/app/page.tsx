@@ -1,6 +1,6 @@
 import FitLogApp from "./fitlog-app";
 
-// The root route renders the workout library home page.
+// The client loads the library and owns its loading state.
 export default function Home() {
-  return <FitLogApp view="home" />;
+  return <FitLogApp view="home" workouts={[]} />;
 }

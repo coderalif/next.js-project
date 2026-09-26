@@ -1,106 +1,41 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { getWorkouts, type Workout } from "../lib/workouts";
 
-type Workout = {
-  id: string;
-  name: string;
-  tags: string[];
-  equipment: string;
-  duration: number;
-  calories: number;
-  rating: number;
-  image: string;
-  description: string;
-  difficulty: string;
-  sets: number;
-  reps: string;
-  instructions: string[];
-};
-
-// Reuse a small image set across the library so the cards stay visually consistent.
-const images = [
-  "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&w=900&q=85",
-  "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=900&q=85",
-  "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?auto=format&fit=crop&w=900&q=85",
-  "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=900&q=85",
-];
-
-// These arrays provide the local workout catalog used by the home and detail pages.
-const names = [
-  "Barbell Bench Press",
-  "Pull-Up",
-  "Back Squat",
-  "Overhead Press",
-  "Dumbbell Bicep Curl",
-  "Hollow-Body Plank",
-  "Conventional Deadlift",
-  "Push-Up",
-  "Walking Lunge",
-  "Russian Twist",
-  "Barbell Row",
-  "Romanian Deadlift",
-];
-
-// Build complete workout records from the catalog values above.
-const workoutData: Workout[] = names.map((name, i) => ({
-  id: name.toLowerCase().replaceAll(" ", "-"),
-  name,
-  tags: [
-    ["Chest", "Arms"],
-    ["Back", "Arms"],
-    ["Legs", "Core"],
-    ["Shoulders", "Arms"],
-    ["Arms"],
-    ["Core"],
-    ["Back", "Legs"],
-    ["Chest", "Arms", "Core"],
-    ["Legs"],
-    ["Core"],
-    ["Back"],
-    ["Legs"],
-  ][i],
-  equipment: [
-    "Barbell, Bench",
-    "Pull-up Bar",
-    "Barbell, Rack",
-    "Barbell",
-    "Dumbbells",
-    "Bodyweight",
-    "Barbell",
-    "Bodyweight",
-    "Dumbbells (optional)",
-    "Medicine Ball",
-    "Barbell",
-    "Barbell",
-  ][i],
-  duration: [25, 15, 30, 20, 12, 10, 28, 10, 18, 8, 18, 26][i],
-  calories: [180, 120, 240, 150, 80, 60, 260, 90, 170, 70, 160, 230][i],
-  rating: [4.8, 4.7, 4.9, 4.6, 4.3, 4.4, 4.9, 4.5, 4.4, 4.1, 4.7, 4.8][i],
-  image: images[i % images.length],
-  description:
-    i === 0
-      ? "A compound press that builds chest thickness, triceps, and pressing power from a stable bench."
-      : `A focused ${name.toLowerCase()} session built to make every rep count.`,
-  difficulty: i % 3 === 0 ? "Intermediate" : "Beginner",
-  sets: 4,
-  reps: i % 2 ? "8-12" : "6-8",
-  instructions: [
-    "Set your position with a braced core and steady breathing.",
-    "Move through a controlled range and keep the target muscles loaded.",
-    "Pause briefly at the hardest point without losing your shape.",
-    "Return to the start, reset, and repeat with intent.",
-  ],
-}));
+const heroImage =
+  "https://img.magnific.com/free-photo/portrait-anime-character-doing-fitness-exercising_23-2151666664.jpg?w=740";
 
 type View = "home" | "plan" | "detail";
 
-// Read saved workout ids safely on both the server and the browser.
-const readList = (key: string): string[] => {
+// Restore saved IDs and convert old name-based IDs to the API's numeric IDs.
+const readList = (key: string, workouts: Workout[]): string[] => {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
+    const stored = JSON.parse(localStorage.getItem(key) || "[]");
+    if (!Array.isArray(stored)) return [];
+
+    const ids: string[] = [];
+    for (const value of stored) {
+      if (typeof value !== "string") continue;
+
+      let id = value;
+      if (workouts.length > 0) {
+        const workout = workouts.find(
+          (item) =>
+            item.id === value ||
+            item.name.toLowerCase().replaceAll(" ", "-") === value,
+        );
+        if (!workout) continue;
+        id = workout.id;
+      }
+
+      if (!ids.includes(id)) ids.push(id);
+      if (key === "fitlog-plan" && ids.length === 5) break;
+    }
+
+    return ids;
   } catch {
     return [];
   }
@@ -183,6 +118,30 @@ function Stats({ item }: { item: Workout }) {
   );
 }
 
+function WorkoutLoading() {
+  return (
+    <div className="loading" role="status" aria-live="polite">
+      <div>
+        <div className="spinner" />
+        <p>LOADING WORKOUTS...</p>
+      </div>
+    </div>
+  );
+}
+
+// Sort workouts by the option selected in the dropdown.
+function sortWorkouts(workouts: Workout[], sort: string): Workout[] {
+  const sorted = [...workouts];
+
+  if (sort === "calories") {
+    return sorted.sort((first, second) => second.calories - first.calories);
+  }
+  if (sort === "rating") {
+    return sorted.sort((first, second) => second.rating - first.rating);
+  }
+  return sorted.sort((first, second) => first.duration - second.duration);
+}
+
 // A library card links directly to the selected workout detail route.
 function Card({ item }: { item: Workout }) {
   return (
@@ -204,29 +163,26 @@ function Card({ item }: { item: Workout }) {
   );
 }
 
-// Home page hero, loading state, sorting control, and workout grid.
-function Home({ onSort }: { onSort: (value: string) => void }) {
-  const [loading, setLoading] = useState(true);
+// Home page hero, sorting control, and workout grid.
+function Home({
+  workouts,
+  loading,
+  error,
+}: {
+  workouts: Workout[];
+  loading: boolean;
+  error: string;
+}) {
   const [sort, setSort] = useState("duration");
+  const [query, setQuery] = useState("");
 
-  // Keep the loading state visible briefly while the library is prepared.
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Sort a copy so the original catalog order remains unchanged.
-  const ordered = useMemo(
-    () =>
-      [...workoutData].sort((a, b) =>
-        sort === "calories"
-          ? b.calories - a.calories
-          : sort === "rating"
-            ? b.rating - a.rating
-            : a.duration - b.duration,
-      ),
-    [sort],
+  // Search by workout name or muscle group, then apply the selected sort order.
+  const matchingWorkouts = workouts.filter((item) =>
+    `${item.name} ${item.tags.join(" ")}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
   );
+  const ordered = sortWorkouts(matchingWorkouts, sort);
   return (
     <>
       <main className="shell">
@@ -249,7 +205,10 @@ function Home({ onSort }: { onSort: (value: string) => void }) {
               </a>
             </div>
             <div className="hero-media">
-              <img src={images[0]} alt="Athlete training with a barbell" />
+              <img
+                src={workouts[0]?.image || heroImage}
+                alt="Athlete training with a barbell"
+              />
             </div>
           </div>
         </section>
@@ -259,27 +218,38 @@ function Home({ onSort }: { onSort: (value: string) => void }) {
               <h2 className="display">THE LIBRARY</h2>
               <p>Twelve lifts covering every major muscle group.</p>
             </div>
-            <label className="sort">
-              Sort by{" "}
-              <select
-                value={sort}
-                onChange={(e) => {
-                  setSort(e.target.value);
-                  onSort(e.target.value);
-                }}
-              >
-                <option value="duration">Duration</option>
-                <option value="calories">Calories</option>
-                <option value="rating">Rating</option>
-              </select>
-            </label>
+            <div className="library-controls">
+              <label className="search-field">
+                <span className="visually-hidden">
+                  Search workouts by name or muscle group
+                </span>
+                <input
+                  className="search-input"
+                  type="search"
+                  placeholder="Search workouts"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </label>
+              <label className="sort">
+                Sort by{" "}
+                <select
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value)}
+                >
+                  <option value="duration">Duration</option>
+                  <option value="calories">Calories</option>
+                  <option value="rating">Rating</option>
+                </select>
+              </label>
+            </div>
           </div>
           {loading ? (
-            <div className="loading">
-              <div>
-                <div className="spinner" />
-                <p>LOADING WORKOUTS...</p>
-              </div>
+            <WorkoutLoading />
+          ) : error ? (
+            <div className="empty">
+              <h2 className="display">WORKOUTS UNAVAILABLE</h2>
+              <p>{error}</p>
             </div>
           ) : (
             <div className="card-grid">
@@ -298,29 +268,44 @@ function Home({ onSort }: { onSort: (value: string) => void }) {
 function Plan({
   planIds,
   savedIds,
+  workouts,
+  loading,
+  error,
   onRemove,
   onDone,
-  onTab,
 }: {
   planIds: string[];
   savedIds: string[];
+  workouts: Workout[];
+  loading: boolean;
+  error: string;
   onRemove: (id: string) => void;
   onDone: (id: string) => void;
-  onTab: (tab: "plan" | "saved") => void;
 }) {
   const [tab, setTab] = useState<"plan" | "saved">("plan");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("duration");
   const ids = tab === "plan" ? planIds : savedIds;
 
   // Resolve stored ids into workout records and ignore ids no longer in the catalog.
   const items = ids
-    .map((id) => workoutData.find((item) => item.id === id))
+    .map((id) => workouts.find((item) => item.id === id))
     .filter(Boolean) as Workout[];
+  // Search and sort only the items in the selected tab.
+  const matchingItems = items.filter((item) =>
+    `${item.name} ${item.tags.join(" ")}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
+  const filteredItems = sortWorkouts(matchingItems, sort);
   const minutes = planIds.reduce(
-    (sum, id) => sum + (workoutData.find((x) => x.id === id)?.duration || 0),
+    (sum, id) =>
+      sum + (workouts.find((item) => item.id === id)?.duration || 0),
     0,
   );
   const calories = planIds.reduce(
-    (sum, id) => sum + (workoutData.find((x) => x.id === id)?.calories || 0),
+    (sum, id) =>
+      sum + (workouts.find((item) => item.id === id)?.calories || 0),
     0,
   );
 
@@ -351,28 +336,51 @@ function Plan({
         <div className="tabs">
           <button
             className={`tab ${tab === "plan" ? "active" : ""}`}
-            onClick={() => {
-              setTab("plan");
-              onTab("plan");
-            }}
+            onClick={() => setTab("plan")}
           >
             Today&apos;s Plan
           </button>
           <button
             className={`tab ${tab === "saved" ? "active" : ""}`}
-            onClick={() => {
-              setTab("saved");
-              onTab("saved");
-            }}
+            onClick={() => setTab("saved")}
           >
             Saved
           </button>
         </div>
-        <span className="sort">
-          {items.length} {tab === "plan" ? "planned" : "saved"}
-        </span>
+        <div className="plan-tools">
+          <label className="search-field">
+            <span className="visually-hidden">
+              Search {tab === "plan" ? "planned" : "saved"} workouts
+            </span>
+            <input
+              className="search-input"
+              type="search"
+              placeholder="Search workouts"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+          <label className="sort">
+            Sort by
+            <select value={sort} onChange={(event) => setSort(event.target.value)}>
+              <option value="duration">Duration</option>
+              <option value="calories">Calories</option>
+              <option value="rating">Rating</option>
+            </select>
+          </label>
+          <span className="plan-count">
+            {items.length} {tab === "plan" ? "planned" : "saved"}
+          </span>
+        </div>
       </div>
-      {items.length === 0 ? (
+      {loading ? (
+        <WorkoutLoading />
+      ) : error ? (
+        <div className="empty">
+          <h2 className="display">WORKOUTS UNAVAILABLE</h2>
+          <p>{error}</p>
+        </div>
+      ) : items.length === 0 ? (
         <div className="empty">
           <h2 className="display">NOTHING HERE YET</h2>
           <p>Browse the library and add a lift to get today moving.</p>
@@ -380,9 +388,14 @@ function Plan({
             Go to workouts
           </Link>
         </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="empty">
+          <h2 className="display">NO MATCHING WORKOUTS</h2>
+          <p>Try another name or muscle group.</p>
+        </div>
       ) : (
         <div className="plan-list">
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <article className="plan-card" key={item.id}>
               <img src={item.image} alt="" />
               <div>
@@ -418,10 +431,12 @@ function Plan({
 // Detail page with workout specs, instructions, and plan actions.
 function Detail({
   item,
+  disableAdd,
   onAdd,
   onSave,
 }: {
   item: Workout;
+  disableAdd: boolean;
   onAdd: () => void;
   onSave: () => void;
 }) {
@@ -466,7 +481,12 @@ function Detail({
             </ol>
           </div>
           <div className="detail-actions">
-            <button className="lime-btn" onClick={onAdd}>
+            <button
+              className="lime-btn"
+              onClick={onAdd}
+              disabled={disableAdd}
+              title={disableAdd ? "Already planned or today's plan is full" : undefined}
+            >
               ▣ &nbsp; Add to today&apos;s plan
             </button>
             <button className="outline-btn" onClick={onSave}>
@@ -481,30 +501,63 @@ function Detail({
 
 export default function FitLogApp({
   view,
-  workoutId,
+  workouts: initialWorkouts,
+  workout,
 }: {
   view: View;
-  workoutId?: string;
+  workouts: Workout[];
+  workout?: Workout;
 }) {
+  const [workouts, setWorkouts] = useState(initialWorkouts);
+  const [workoutsError, setWorkoutsError] = useState("");
+  const workoutsLoading =
+    view !== "detail" && workouts.length === 0 && !workoutsError;
   // Start consistently on the server and browser, then restore local data after hydration.
   const [planIds, setPlanIds] = useState<string[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [toast, setToast] = useState("");
 
+  // Load workout data for the library and plan pages.
+  useEffect(() => {
+    if (view === "detail" || workouts.length > 0) return;
+
+    let active = true;
+    getWorkouts()
+      .then((data) => {
+        // Ignore the response if the user has left this page.
+        if (!active) return;
+        if (data.length === 0) {
+          setWorkoutsError("The workout API returned an empty list.");
+          return;
+        }
+        setWorkouts(data);
+      })
+      .catch(() => {
+        if (active) setWorkoutsError("Please refresh to try loading again.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [view, workouts.length]);
+
+  // Restore the saved plan after the browser has loaded.
   useEffect(() => {
     const restore = window.setTimeout(() => {
-      setPlanIds(readList("fitlog-plan"));
-      setSavedIds(readList("fitlog-saved"));
+      setPlanIds(readList("fitlog-plan", workouts));
+      setSavedIds(readList("fitlog-saved", workouts));
       setHydrated(true);
     }, 0);
     return () => window.clearTimeout(restore);
-  }, []);
+  }, [workouts]);
 
+  // Save plan changes in the browser so they survive a reload.
   useEffect(() => {
     if (hydrated) localStorage.setItem("fitlog-plan", JSON.stringify(planIds));
   }, [hydrated, planIds]);
 
+  // Save the later list in the browser too.
   useEffect(() => {
     if (hydrated)
       localStorage.setItem("fitlog-saved", JSON.stringify(savedIds));
@@ -515,15 +568,15 @@ export default function FitLogApp({
     setToast(message);
     setTimeout(() => setToast(""), 2400);
   };
-  const item = workoutData.find((x) => x.id === workoutId);
+  const item = workout;
 
   // Add a workout only once and enforce the five-exercise daily limit.
   const add = () => {
     if (!item) return;
     if (planIds.includes(item.id)) return notify("Already in today's plan");
-    if (planIds.length >= 5) return notify("Today&apos;s plan is full");
+    if (planIds.length >= 5) return notify("Today's plan is full");
     setPlanIds((value) => [...value, item.id]);
-    notify("Added to today&apos;s plan");
+    notify("Added to today's plan");
   };
 
   // Save a workout for later without creating duplicate saved entries.
@@ -553,18 +606,31 @@ export default function FitLogApp({
         planCount={planIds.length}
         savedCount={savedIds.length}
       />
-      {view === "home" && <Home onSort={() => {}} />}
+      {view === "home" && (
+        <Home
+          workouts={workouts}
+          loading={workoutsLoading}
+          error={workoutsError}
+        />
+      )}
       {view === "plan" && (
         <Plan
           planIds={planIds}
           savedIds={savedIds}
+          workouts={workouts}
+          loading={workoutsLoading}
+          error={workoutsError}
           onRemove={remove}
           onDone={done}
-          onTab={() => {}}
         />
       )}
       {view === "detail" && item && (
-        <Detail item={item} onAdd={add} onSave={save} />
+        <Detail
+          item={item}
+          disableAdd={planIds.length >= 5 || planIds.includes(item.id)}
+          onAdd={add}
+          onSave={save}
+        />
       )}
       <Footer />
       {toast && <div className="toast">{toast}</div>}{" "}
