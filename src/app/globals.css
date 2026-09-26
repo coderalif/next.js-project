@@ -149,8 +149,8 @@ select {
 .hero-media img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  filter: saturate(0.82) contrast(1.08);
+  object-fit: contain;
+  object-position: center;
 }
 .hero-media:after {
   content: "";
@@ -225,6 +225,39 @@ select {
   gap: 10px;
   align-items: center;
 }
+.library-controls,
+.plan-tools {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.search-field {
+  display: flex;
+}
+.search-input {
+  width: 220px;
+  min-width: 0;
+  background: #13171b;
+  color: var(--white);
+  border: 1px solid #3a434d;
+  padding: 9px 12px;
+  font-size: 12px;
+}
+.search-input:focus {
+  outline: 1px solid var(--lime);
+  border-color: var(--lime);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .sort select {
   background: #13171b;
   color: var(--white);
@@ -254,6 +287,12 @@ select {
   aspect-ratio: 1.4;
   object-fit: cover;
   display: block;
+}
+/* Dim disabled plan buttons when today's limit has been reached. */
+.lime-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
 }
 .card-content {
   padding: 22px 24px 24px;
@@ -363,20 +402,21 @@ select {
   gap: 14px;
 }
 .plan-card {
+  /* Keep the My Plan rows compact like the design reference. */
   display: grid;
-  grid-template-columns: 142px 1fr auto;
-  gap: 22px;
+  grid-template-columns: 112px 1fr auto;
+  gap: 16px;
   align-items: center;
   border: 1px solid var(--line);
   background: var(--panel);
-  padding: 12px;
+  padding: 10px;
 }
 .plan-card > div {
   min-width: 0;
 }
 .plan-card img {
-  width: 142px;
-  height: 112px;
+  width: 112px;
+  height: 84px;
   object-fit: cover;
 }
 .plan-card h3 {
@@ -541,6 +581,10 @@ select {
     align-items: start;
     flex-direction: column;
   }
+  .library-controls {
+    width: 100%;
+    flex-wrap: wrap;
+  }
   .plan-card {
     grid-template-columns: 100px 1fr;
   }
@@ -562,6 +606,19 @@ select {
   }
   .badges {
     gap: 8px;
+  }
+  .tabs-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .plan-tools,
+  .search-field,
+  .search-input {
+    width: 100%;
+  }
+  .library-controls .sort {
+    width: 100%;
   }
   .hero h1 {
     font-size: 48px;
